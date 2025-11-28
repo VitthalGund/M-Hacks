@@ -4,7 +4,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { JobFeed } from "@/components/features/JobFeed";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { Target, TrendingUp, Activity, Bell, Wallet, User as UserIcon } from "lucide-react";
+import { Target, TrendingUp, TrendingDown, Activity, Bell, Wallet, User as UserIcon, Shield } from "lucide-react";
 import { findMatches } from "@/lib/agents/hunter";
 import Notification from "@/models/Notification";
 import Job from "@/models/Job";
@@ -12,6 +12,7 @@ import Invoice from "@/models/Invoice";
 import User from "@/models/User";
 import dbConnect from "@/lib/db";
 import { redirect } from "next/navigation";
+import { calculateFinancialMetrics } from "@/lib/agents/cfo";
 
 export default async function DashboardPage() {
   const session: any = await getServerSession(authOptions as any);
@@ -79,7 +80,7 @@ export default async function DashboardPage() {
   const winRate = 0.2;
   const projectedEarnings = Math.round(potentialValue * winRate);
 
-  // 5. Financial Snapshot
+  // 5. Financial Snapshot (Invoices)
   const invoices = await Invoice.find({ related_freelancer_id: userId }).lean();
   const unpaidAmount = invoices
       .filter((inv: any) => inv.status !== 'PAID')
@@ -87,6 +88,10 @@ export default async function DashboardPage() {
   const paidAmount = invoices
       .filter((inv: any) => inv.status === 'PAID')
       .reduce((sum: number, inv: any) => sum + inv.amount_due, 0);
+
+  // 6. Financial Snapshot (CFO Agent)
+  const metrics = await calculateFinancialMetrics(userId);
+  const { liquidity, burnRate, runwayDays, healthScore } = metrics;
 
   // 6. User Profile (for completeness/credibility)
   const user = await User.findOne({ userId }).lean();
@@ -114,6 +119,68 @@ export default async function DashboardPage() {
               </Card>
           </div>
         </header>
+
+        {/* CFO Metrics Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <Card>
+                <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-blue-500/10 rounded-xl text-blue-500">
+                            <Wallet size={24} />
+                        </div>
+                        <div>
+                            <p className="text-sm text-muted-foreground">Total Liquidity</p>
+                            <h3 className="text-2xl font-bold">
+                                {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(liquidity)}
+                            </h3>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+            <Card>
+                <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-red-500/10 rounded-xl text-red-500">
+                            <TrendingDown size={24} />
+                        </div>
+                        <div>
+                            <p className="text-sm text-muted-foreground">Monthly Burn</p>
+                            <h3 className="text-2xl font-bold">
+                                {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(burnRate)}
+                            </h3>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+            <Card>
+                <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-green-500/10 rounded-xl text-green-500">
+                            <Activity size={24} />
+                        </div>
+                        <div>
+                            <p className="text-sm text-muted-foreground">Runway</p>
+                            <h3 className="text-2xl font-bold">{runwayDays} Days</h3>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+            <Card>
+                <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                        <div className={`p-3 rounded-xl ${healthScore >= 70 ? 'bg-green-500/10 text-green-500' : healthScore >= 40 ? 'bg-yellow-500/10 text-yellow-500' : 'bg-red-500/10 text-red-500'}`}>
+                            <Target size={24} />
+                        </div>
+                        <div>
+                            <p className="text-sm text-muted-foreground">Health Score</p>
+                            <h3 className={`text-2xl font-bold ${healthScore >= 70 ? 'text-green-500' : healthScore >= 40 ? 'text-yellow-500' : 'text-red-500'}`}>
+                                {healthScore}/100
+                            </h3>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Widget 1: Active Pursuit */}

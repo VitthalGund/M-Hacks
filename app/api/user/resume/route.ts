@@ -4,6 +4,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import dbConnect from "@/lib/db";
 import User from "@/models/User";
 import { extractTextFromBuffer, analyzeResumeWithGemini } from "@/lib/resume-analyzer";
+import { calculateCredibilityScore } from "@/lib/scoring-service";
 
 export async function POST(req: NextRequest) {
     try {
@@ -34,22 +35,9 @@ export async function POST(req: NextRequest) {
         const analysis = await analyzeResumeWithGemini(text);
         const { skills, experienceYears, credibilityScore } = analysis;
 
-        await dbConnect();
-
-        // 3. Calculate Final Score (Hybrid: AI Score + Financial Trust)
-        // We use the AI's credibility score as a base, but we can still boost it with financial data if we want.
-        // Or we can just use the AI score directly. Let's blend them.
-        // Let's use the scoring service to add the "Financial Trust" bonus on top of the AI score.
-        // But the scoring service calculates everything from scratch.
-        // Let's modify the logic: AI gives the "Resume Quality" score. We add "Financial Trust".
-        
-        // Fetch user to check bank connection
-        const user = await User.findOne({ userId });
-        let finalScore = credibilityScore;
-        
-        if (user && user.isBankConnected) {
-            finalScore = Math.min(finalScore + 20, 100); // Bonus for bank connection
-        }
+        // 3. Calculate Score using the centralized service
+        // This ensures consistency with the requested formula: Base + Financial + Skills + Experience
+        const { score } = await calculateCredibilityScore(userId, skills.length, experienceYears);
 
         // 4. Update User
         const updatedUser = await User.findOneAndUpdate(
@@ -58,7 +46,7 @@ export async function POST(req: NextRequest) {
                 $set: {
                     skills: skills,
                     experienceYears: experienceYears,
-                    credibilityScore: finalScore,
+                    credibilityScore: score,
                     resumeUploadedAt: new Date()
                 }
             },
@@ -67,7 +55,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            score: finalScore,
+            score: score,
             skills: skills,
             experienceYears: experienceYears,
             message: "Resume processed and profile updated successfully"
