@@ -158,110 +158,130 @@ export default function CommandCenterPage() {
                     </CardHeader>
                     
                     <CardContent className="flex-1 space-y-4 pt-2">
-                      {/* Content varies by agent */}
-                      {action.agent === "Hunter" && (
+                      {/* Status Report Generic UI */}
+                      {action.type === "status_report" ? (
                         <div className="space-y-3">
-                          <p className="text-sm text-muted-foreground">
-                            Found a high-match job opportunity. Drafted a proposal for you.
-                          </p>
-                          <div className="bg-slate-950/50 p-3 rounded text-sm font-mono text-xs opacity-80 whitespace-pre-wrap line-clamp-4">
-                            {action.payload.proposal_draft}
-                          </div>
-                          <div className="flex gap-4 text-xs text-muted-foreground">
-                            <span>Est. Hours: {action.payload.meta.estimated_hours}</span>
-                            <span>Rate: ${action.payload.meta.suggested_rate}/hr</span>
-                          </div>
+                           <p className="text-sm text-muted-foreground">{action.message}</p>
+                           <div className="flex items-center gap-2 text-xs text-green-400/80 bg-green-500/10 p-2 rounded w-fit">
+                             <Check className="w-3 h-3" />
+                             <span>System Active & Monitored</span>
+                           </div>
                         </div>
-                      )}
-
-                      {action.agent === "CFO" && action.type === "smart_split" && (
-                        <div className="space-y-3">
-                          <p className="font-medium">{action.message}</p>
-                          <div className="space-y-2">
-                            {action.suggested_actions.map((sa: any, i: number) => (
-                              <div key={i} className="flex justify-between text-sm bg-slate-950/30 p-2 rounded">
-                                <span>{sa.action === "transfer" ? `Transfer to ${sa.to}` : "Keep in Checking"}</span>
-                                <span className="font-mono">₹{sa.amount}</span>
+                      ) : (
+                        <>
+                          {/* Content varies by agent */}
+                          {action.agent === "Hunter" && (
+                            <div className="space-y-3">
+                              <p className="text-sm text-muted-foreground">
+                                Found a high-match job opportunity. Drafted a proposal for you.
+                              </p>
+                              <div className="bg-slate-950/50 p-3 rounded text-sm font-mono text-xs opacity-80 whitespace-pre-wrap line-clamp-4">
+                                {action.payload.proposal_draft}
                               </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {action.agent === "Collections" && (
-                        <div className="space-y-3">
-                            <p className="text-sm text-muted-foreground">Invoice {action.invoice_id} requires attention.</p>
-                            {action.payload?.subject ? (
-                                <div className="bg-slate-950/50 p-3 rounded text-sm">
-                                    <p className="font-bold mb-1">{action.payload.subject}</p>
-                                    <p className="opacity-70 line-clamp-3">{action.payload.body}</p>
-                                </div>
-                            ) : (
-                                <p className="font-medium">{action.subject}</p>
-                            )}
-                            <div className="flex gap-2">
-                                <Badge variant="secondary">{action.channel || "Escalation"}</Badge>
+                              <div className="flex gap-4 text-xs text-muted-foreground">
+                                <span>Est. Hours: {action.payload.meta.estimated_hours}</span>
+                                <span>Rate: ${action.payload.meta.suggested_rate}/hr</span>
+                              </div>
                             </div>
-                        </div>
-                      )}
+                          )}
 
-                      {action.agent === "Productivity" && (
-                          <div className="space-y-3">
-                              <p className="font-medium">{action.message || action.title || "Schedule Update"}</p>
-                              {action.type === "suggest_reprioritize" && (
-                                  <ul className="list-disc list-inside text-sm text-muted-foreground">
-                                      {action.suggestions.map((s: any, i: number) => (
-                                          <li key={i}>Mark {s.taskId} as {s.suggestedPriority}</li>
-                                      ))}
-                                  </ul>
-                              )}
-                              {action.type === "create_deep_work_block" && (
-                                  <p className="text-sm text-muted-foreground">
-                                      Proposed: {new Date(action.start).toLocaleString()} - {new Date(action.end).toLocaleTimeString()}
-                                  </p>
-                              )}
-                          </div>
-                      )}
+                          {action.agent === "CFO" && action.type === "smart_split" && (
+                            <div className="space-y-3">
+                              <p className="font-medium">{action.message}</p>
+                              <div className="space-y-2">
+                                {action.suggested_actions.map((sa: any, i: number) => (
+                                  <div key={i} className="flex justify-between text-sm bg-slate-950/30 p-2 rounded">
+                                    <span>{sa.action === "transfer" ? `Transfer to ${sa.to}` : "Keep in Checking"}</span>
+                                    <span className="font-mono">₹{sa.amount}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
 
-                      {action.agent === "Tax" && (
-                          <div className="space-y-3">
-                              <p className="text-sm text-muted-foreground">Categorized new expense.</p>
-                              <div className="flex justify-between items-center bg-slate-950/30 p-3 rounded">
-                                  <span className="font-medium">{action.payload.category}</span>
-                                  {action.payload.deductible ? (
-                                      <Badge className="bg-green-500/20 text-green-400 hover:bg-green-500/30">Deductible</Badge>
-                                  ) : (
-                                      <Badge variant="outline">Non-Deductible</Badge>
+                          {action.agent === "Collections" && (
+                            <div className="space-y-3">
+                                <p className="text-sm text-muted-foreground">Invoice {action.invoice_id} requires attention.</p>
+                                {action.payload?.subject ? (
+                                    <div className="bg-slate-950/50 p-3 rounded text-sm">
+                                        <p className="font-bold mb-1">{action.payload.subject}</p>
+                                        <p className="opacity-70 line-clamp-3">{action.payload.body}</p>
+                                    </div>
+                                ) : (
+                                    <p className="font-medium">{action.subject}</p>
+                                )}
+                                <div className="flex gap-2">
+                                    <Badge variant="secondary">{action.channel || "Escalation"}</Badge>
+                                </div>
+                            </div>
+                          )}
+
+                          {action.agent === "Productivity" && (
+                              <div className="space-y-3">
+                                  <p className="font-medium">{action.message || action.title || "Schedule Update"}</p>
+                                  {action.type === "suggest_reprioritize" && (
+                                      <ul className="list-disc list-inside text-sm text-muted-foreground">
+                                          {action.suggestions.map((s: any, i: number) => (
+                                              <li key={i}>Mark {s.taskId} as {s.suggestedPriority}</li>
+                                          ))}
+                                      </ul>
+                                  )}
+                                  {action.type === "create_deep_work_block" && (
+                                      <p className="text-sm text-muted-foreground">
+                                          Proposed: {new Date(action.start).toLocaleString()} - {new Date(action.end).toLocaleTimeString()}
+                                      </p>
                                   )}
                               </div>
-                              <p className="text-xs text-muted-foreground italic">{action.payload.notes}</p>
-                          </div>
-                      )}
+                          )}
 
+                          {action.agent === "Tax" && (
+                              <div className="space-y-3">
+                                  <p className="text-sm text-muted-foreground">Categorized new expense.</p>
+                                  <div className="flex justify-between items-center bg-slate-950/30 p-3 rounded">
+                                      <span className="font-medium">{action.payload.category}</span>
+                                      {action.payload.deductible ? (
+                                          <Badge className="bg-green-500/20 text-green-400 hover:bg-green-500/30">Deductible</Badge>
+                                      ) : (
+                                          <Badge variant="outline">Non-Deductible</Badge>
+                                      )}
+                                  </div>
+                                  <p className="text-xs text-muted-foreground italic">{action.payload.notes}</p>
+                              </div>
+                          )}
+                        </>
+                      )}
                     </CardContent>
 
                     <div className="p-4 pt-0 flex gap-3 mt-auto">
-                      {action.agent === "Productivity" ? (
-                        <>
-                          <Button onClick={() => handleExecute(action)} className="flex-1 gap-2 bg-purple-600 hover:bg-purple-700" size="sm">
-                            <Check size={16} /> Execute
+                      {action.type === "status_report" ? (
+                          <Button onClick={() => handleDismiss(action)} className="flex-1 gap-2 border-white/10 hover:bg-white/5" variant="outline" size="sm">
+                            <Check size={16} /> Acknowledge
                           </Button>
-                          <Button variant="outline" size="sm" className="flex-1 gap-2 border-white/10 hover:bg-white/5" onClick={() => toast.info("Edit feature coming soon")}>
-                            <Edit2 size={16} /> Edit
-                          </Button>
-                          <Button onClick={() => handleDismiss(action)} variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive">
-                            <X size={16} /> Cancel
-                          </Button>
-                        </>
                       ) : (
                         <>
-                          <Button onClick={() => handleExecute(action)} className="flex-1 gap-2" size="sm">
-                            <Check size={16} />
-                            {action.agent === "Hunter" ? "Send Proposal" : "Execute"}
-                          </Button>
-                          <Button onClick={() => handleDismiss(action)} variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive">
-                            <X size={16} />
-                          </Button>
+                          {action.agent === "Productivity" ? (
+                            <>
+                              <Button onClick={() => handleExecute(action)} className="flex-1 gap-2 bg-purple-600 hover:bg-purple-700" size="sm">
+                                <Check size={16} /> Execute
+                              </Button>
+                              <Button variant="outline" size="sm" className="flex-1 gap-2 border-white/10 hover:bg-white/5" onClick={() => toast.info("Edit feature coming soon")}>
+                                <Edit2 size={16} /> Edit
+                              </Button>
+                              <Button onClick={() => handleDismiss(action)} variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive">
+                                <X size={16} /> Cancel
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button onClick={() => handleExecute(action)} className="flex-1 gap-2" size="sm">
+                                <Check size={16} />
+                                {action.agent === "Hunter" ? "Send Proposal" : "Execute"}
+                              </Button>
+                              <Button onClick={() => handleDismiss(action)} variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive">
+                                <X size={16} />
+                              </Button>
+                            </>
+                          )}
                         </>
                       )}
                     </div>

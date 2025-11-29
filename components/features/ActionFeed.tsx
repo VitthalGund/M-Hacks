@@ -13,30 +13,36 @@ type Action = {
   status: "success" | "warning" | "info";
 };
 
-const initialActions: Action[] = [
-  { id: "1", agent: "Hunter", message: "Scanned 45 new gigs. Found 3 high-match opportunities.", timestamp: "10:42 AM", status: "success" },
-  { id: "2", agent: "CFO", message: "Incoming payment of ₹50,000 detected from Client A.", timestamp: "10:45 AM", status: "success" },
-  { id: "3", agent: "CFO", message: "Locked ₹15,000 (30%) for Tax Buffer.", timestamp: "10:45 AM", status: "info" },
-  { id: "4", agent: "Tax", message: "Flagged 'Starbucks' transaction as potential client meeting expense.", timestamp: "11:15 AM", status: "warning" },
-];
-
 export function ActionFeed() {
-  const [actions, setActions] = useState<Action[]>(initialActions);
+  const [actions, setActions] = useState<Action[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Simulate live updates
   useEffect(() => {
-    const interval = setInterval(() => {
-      const newAction: Action = {
-        id: Date.now().toString(),
-        agent: "Productivity",
-        message: "Blocked 2 hours for Deep Work based on deadline proximity.",
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        status: "info"
-      };
-      setActions(prev => [newAction, ...prev]);
-    }, 8000);
+    const fetchActions = async () => {
+      try {
+        const res = await fetch("/api/notifications");
+        if (res.ok) {
+          const data = await res.json();
+          // Filter for agent actions and alerts
+          const filtered = data.filter((n: any) => ['agent_action', 'alert'].includes(n.type));
+          
+          const mapped: Action[] = filtered.map((n: any) => ({
+            id: n._id || n.id,
+            agent: n.agent || "System",
+            message: n.message,
+            timestamp: new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            status: n.priority === 'high' ? 'warning' : 'success' // Simple mapping
+          }));
+          setActions(mapped);
+        }
+      } catch (error) {
+        console.error("Failed to fetch notifications", error);
+      }
+    };
 
+    fetchActions();
+    // Poll every 30 seconds
+    const interval = setInterval(fetchActions, 30000);
     return () => clearInterval(interval);
   }, []);
 

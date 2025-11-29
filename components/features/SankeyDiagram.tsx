@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Loader2 } from "lucide-react";
 
-export function SankeyDiagram() {
+export function SankeyDiagram({ lastUpdated }: { lastUpdated?: number }) {
   const [stats, setStats] = useState({ revenue: 0, taxSaved: 0 });
   const [loading, setLoading] = useState(true);
 
@@ -24,7 +24,7 @@ export function SankeyDiagram() {
       }
     };
     fetchStats();
-  }, []);
+  }, [lastUpdated]);
 
   if (loading) {
     return (

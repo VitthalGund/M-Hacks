@@ -4,8 +4,7 @@ import { motion } from "framer-motion";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { HeartPulse } from "lucide-react";
 
-export function HealthBar() {
-  const healthScore = 78; // 0-100
+export function HealthBar({ healthScore = 0 }: { healthScore?: number }) {
 
   return (
     <Card className="border-green-500/20 bg-gradient-to-br from-green-500/5 to-transparent">

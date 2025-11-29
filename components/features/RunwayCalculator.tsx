@@ -4,8 +4,7 @@ import { motion } from "framer-motion";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { PlaneTakeoff } from "lucide-react";
 
-export function RunwayCalculator() {
-  const daysLeft = 142;
+export function RunwayCalculator({ daysLeft = 0 }: { daysLeft?: number }) {
 
   return (
     <Card className="border-blue-500/20 bg-gradient-to-br from-blue-500/5 to-transparent">

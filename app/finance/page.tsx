@@ -32,30 +32,40 @@ export default function FinancePage() {
     fetchBankData();
   }, []);
 
-  const handleSimulateTransaction = async (type: 'CREDIT' | 'DEBIT') => {
+  const [lastUpdated, setLastUpdated] = useState(Date.now());
+
+  const handleSync = async () => {
     setSimulating(true);
     try {
-      const amount = type === 'CREDIT' ? 5000 : 1200;
-      const description = type === 'CREDIT' ? "Client Payment (Simulated)" : "Software Subscription (Simulated)";
+      // Randomly decide number of transactions (1-3)
+      const count = Math.floor(Math.random() * 3) + 1;
       
-      const res = await fetch("/api/bank/transactions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type,
-          amount,
-          description,
-          category: type === 'CREDIT' ? "Income" : "Software"
-        })
-      });
+      for (let i = 0; i < count; i++) {
+        // Randomly decide type: CREDIT (Income) or DEBIT (Expense)
+        const type = Math.random() > 0.5 ? 'CREDIT' : 'DEBIT';
+        const amount = Math.floor(Math.random() * (type === 'CREDIT' ? 5000 : 2000)) + 500;
+        const description = type === 'CREDIT' 
+          ? `Client Payment #${Math.floor(Math.random() * 1000)}` 
+          : `Software Subscription #${Math.floor(Math.random() * 1000)}`;
 
-      if (res.ok) {
-        await fetchBankData(); // Refresh balance
-        // Force refresh transaction stream (a bit hacky, but works for demo if we key it or use context)
-        window.location.reload(); 
+        await fetch("/api/bank/transactions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type,
+            amount,
+            description,
+            category: type === 'CREDIT' ? "Income" : "Software"
+          })
+        });
       }
+
+      await fetchBankData(); // Refresh balance
+      setLastUpdated(Date.now()); // Trigger graph update
+      // Force refresh transaction stream (a bit hacky, but works for demo if we key it or use context)
+      // window.location.reload(); // Removed reload, relying on state
     } catch (error) {
-      console.error("Simulation failed", error);
+      console.error("Sync failed", error);
     } finally {
       setSimulating(false);
     }
@@ -84,22 +94,12 @@ export default function FinancePage() {
           ) : (
             <div className="flex gap-2">
                <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => handleSimulateTransaction('CREDIT')}
+                onClick={handleSync}
                 disabled={simulating}
-                className="border-green-500/20 hover:bg-green-500/10 text-green-400"
+                className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground"
               >
-                {simulating ? <Loader2 className="w-3 h-3 animate-spin mr-1"/> : "+"} Simulate Income
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => handleSimulateTransaction('DEBIT')}
-                disabled={simulating}
-                className="border-red-500/20 hover:bg-red-500/10 text-red-400"
-              >
-                 {simulating ? <Loader2 className="w-3 h-3 animate-spin mr-1"/> : "-"} Simulate Expense
+                <RefreshCw className={`w-4 h-4 ${simulating ? 'animate-spin' : ''}`} />
+                {simulating ? "Syncing..." : "Sync"}
               </Button>
             </div>
           )}
@@ -158,9 +158,9 @@ export default function FinancePage() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-[500px]">
-              <TransactionStream />
+              <TransactionStream lastUpdated={lastUpdated} />
               <div className="flex flex-col gap-8 h-full">
-                <SankeyDiagram />
+                <SankeyDiagram lastUpdated={lastUpdated} />
                 <Card className="flex-1 bg-yellow-500/5 border-yellow-500/20">
                    <CardContent className="p-6">
                      <h3 className="font-bold mb-4 flex items-center gap-2">

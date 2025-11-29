@@ -1,4 +1,3 @@
-import { getFinancialStats } from "@/lib/data-service";
 import * as Hunter from "./agents/hunter";
 import * as Collections from "./agents/collections";
 import * as CFO from "./agents/cfo";
@@ -11,154 +10,241 @@ import Event from "@/models/Event";
 import Task from "@/models/Task";
 import Transaction from "@/models/Transaction";
 import User from "@/models/User";
+import Notification from "@/models/Notification";
+
+// Helper to create notification if action exists
+async function createNotification(userId: string, agent: string, type: string, message: string, payload: any) {
+    // Check for duplicate to avoid spamming
+    const exists = await Notification.findOne({ 
+        recipientId: userId, 
+        type: type, 
+        "metadata.uniqueKey": payload.uniqueKey,
+        read: false 
+    });
+    
+    if (!exists) {
+        await Notification.create({
+            recipientId: userId,
+            type: type, // e.g., 'agent_action' or specific type
+            message: message,
+            read: false,
+            agent: agent, // Ensure Notification schema has this or we map it from type
+            metadata: payload
+        });
+    }
+}
 
 // Main orchestrator function
-export async function runAgents(userId: string) {
+export async function runAllAgents(userId: string) {
     await dbConnect();
-    const actions: any[] = [];
     const logs: string[] = [];
+    let actionCount = 0;
 
-    // 1. Hunter Agent (Job Matching)
-    // Fetch top 5 open jobs, sorted by newest first
-    const openJobs = await Job.find({ job_status: "Open" })
-        .sort({ postedAt: -1 })
-        .limit(5);
-
-    // Fetch freelancer profile (Mock for now, or fetch from User model)
-    const freelancerUser = await User.findOne({ userId: userId });
-    const freelancerProfile = {
-        user_id: userId,
-        name: freelancerUser?.name || "Abhishek Pandey",
-        skills: freelancerUser?.skills || ["React", "Next.js", "Node.js", "TypeScript", "Solidity"],
-        experience_years: 5,
-        availability_hours_per_week: 40,
-        hourly_rate: 50,
-        assigned_projects: [],
-        credibility_score: 85
+    // Helper to create status report if no critical action
+    const createStatusReport = async (agent: string, message: string) => {
+        await Notification.create({
+            recipientId: userId,
+            type: "status_report",
+            agent: agent,
+            message: message,
+            read: false,
+            metadata: { priority: "low" }
+        });
     };
 
-    let hunterActionsCount = 0;
-    for (const job of openJobs) {
-        // Map job to Hunter type
-        const hunterJob: Hunter.JobPost = {
-            job_id: job.job_id,
-            title: job.title,
-            job_category: job.job_category,
-            job_description: job.job_description,
-            budget_min: job.budgetMin,
-            budget_max: job.budgetMax,
-            skills: JSON.stringify(job.skills),
-            experience_level: job.experienceLevel
-        };
+    // 1. Hunter Agent
+    try {
+        logs.push("Hunter: Scanning for job matches...");
+        const hunterResults = await Hunter.processJobMatches(userId);
+        if (hunterResults && hunterResults.length > 0) {
+            logs.push(`Hunter: Found ${hunterResults.length} new matches.`);
+            actionCount++;
+        } else {
+            await createStatusReport("Hunter", "Scanned latest jobs. No new high-match opportunities found.");
+        }
+    } catch (e: any) {
+        console.error("Hunter Error", e);
+        logs.push(`Hunter Error: ${e.message}`);
+    }
 
-        if (Hunter.shouldActOnJob(hunterJob, freelancerProfile)) {
-            logs.push(`Hunter acting on job: ${job.title}`);
-            const action = await Hunter.onJobNotification(hunterJob, freelancerProfile);
-            if (action) {
-                actions.push({ agent: "Hunter", ...action });
-                hunterActionsCount++;
-                // Rate Limit: Only process 1 job per run to avoid 429 errors
-                if (hunterActionsCount >= 1) break;
+    // 2. Collections Agent
+    try {
+        logs.push("Collections: Checking overdue invoices...");
+        const myInvoices = await Invoice.find({ status: "Overdue" }); 
+        let collectionsAction = false;
+        for (const inv of myInvoices) {
+            const invoiceRow: Collections.InvoiceRow = {
+                invoice_id: inv.invoice_id,
+                amount_due: Number(inv.amount_due || inv.amount),
+                currency: inv.currency || "INR",
+                status: inv.status,
+                days_overdue: inv.days_overdue || 30,
+                client_id: inv.client_id || "unknown"
+            };
+
+            if (Collections.shouldActOnInvoice(invoiceRow)) {
+                const action = await Collections.onInvoiceAging(invoiceRow);
+                if (action) {
+                    await createNotification(userId, "Collections", "invoice_nudge", action.payload.message, {
+                        ...action.payload,
+                        uniqueKey: `col_${inv.invoice_id}_${new Date().toDateString()}`
+                    });
+                    logs.push(`Collections: Action generated for ${inv.invoice_id}`);
+                    collectionsAction = true;
+                    actionCount++;
+                }
             }
         }
+        if (!collectionsAction) {
+            await createStatusReport("Collections", `Monitored ${myInvoices.length} overdue invoices. No immediate escalation needed.`);
+        }
+    } catch (e: any) {
+        console.error("Collections Error", e);
+        logs.push(`Collections Error: ${e.message}`);
     }
 
-    // 2. Collections Agent (Invoice Reminders)
-    // Fetch overdue invoices for this user (assuming user is sender/freelancer)
-    // In mock data, client_id is the payer. We need to filter by who created it? 
-    // For now, fetch all overdue invoices as per original logic
-    const myInvoices = await Invoice.find({ status: "Overdue" });
+    // 3. CFO Agent
+    try {
+        logs.push("CFO: Analyzing recent transactions...");
+        const recentTxn = await Transaction.findOne({ user_id: userId }).sort({ date: -1 });
+        let cfoAction = false;
+        if (recentTxn) {
+            const cfoTxn: CFO.TransactionType = {
+                transaction_id: recentTxn.transaction_id || recentTxn.txnId,
+                user_id: userId,
+                amount: Number(recentTxn.amount),
+                type: recentTxn.type,
+                narration: recentTxn.narration,
+                date: recentTxn.date,
+                balance_after_transaction: 150000 // Mock
+            };
 
-    let collectionsActionsCount = 0;
-    for (const inv of myInvoices) {
-        const invoiceRow: Collections.InvoiceRow = {
-            invoice_id: inv.invoice_id,
-            amount_due: Number(inv.amount),
-            currency: inv.currency || "INR",
-            status: inv.status,
-            days_overdue: inv.days_overdue || 30, // Default if missing
-            client_id: inv.client_id || "unknown"
-        };
-
-        if (Collections.shouldActOnInvoice(invoiceRow)) {
-            logs.push(`Collections acting on invoice: ${inv.invoice_id}`);
-            const action = await Collections.onInvoiceAging(invoiceRow);
-            if (action) {
-                actions.push({ agent: "Collections", ...action });
-                collectionsActionsCount++;
-                // Rate Limit: Only process 1 invoice per run
-                if (collectionsActionsCount >= 1) break;
+            if (CFO.shouldActOnTransaction(cfoTxn)) {
+                const action = await CFO.onTransaction(cfoTxn, { user_id: userId });
+                if (action) {
+                    await createNotification(userId, "CFO", "smart_split", action.message, {
+                        ...action,
+                        uniqueKey: `cfo_${recentTxn._id}` 
+                    });
+                    logs.push(`CFO: Smart split suggested for ${recentTxn.transaction_id}`);
+                    cfoAction = true;
+                    actionCount++;
+                }
             }
         }
-    }
-
-    // 3. CFO Agent (Smart Split & Alerts)
-    // Fetch recent transaction
-    const mockTxnDoc = await Transaction.findOne({ user_id: userId }).sort({ date: -1 });
-
-    if (mockTxnDoc) {
-        const mockTxn: CFO.TransactionType = {
-            transaction_id: mockTxnDoc.txnId,
-            user_id: mockTxnDoc.user_id,
-            amount: Number(mockTxnDoc.amount),
-            type: mockTxnDoc.type,
-            narration: mockTxnDoc.narration,
-            date: mockTxnDoc.date,
-            balance_after_transaction: 150000 // Mock
-        };
-
-        if (CFO.shouldActOnTransaction(mockTxn)) {
-            logs.push(`CFO acting on transaction: ${mockTxn.transaction_id}`);
-            const action = await CFO.onTransaction(mockTxn, { user_id: userId });
-            if (action) {
-                actions.push({ agent: "CFO", ...action });
-            }
+        if (!cfoAction) {
+            await createStatusReport("CFO", "Financial health check complete. Cash flow within normal parameters.");
         }
+    } catch (e: any) {
+        console.error("CFO Error", e);
+        logs.push(`CFO Error: ${e.message}`);
     }
 
-    // 4. Productivity Agent (Schedule)
-    // Fetch tasks and events
-    const tasks = await Task.find({ userId: "user_100" }); // Using default user for now
-    const events = await Event.find({ userId: "user_100" });
-
-    const schedule: Productivity.UserSchedule = {
-        user_id: userId,
-        tasks: tasks.map((t: any) => ({ id: t.id, dueDate: t.dueDate, est_hours: t.estHours || 2, done: t.done })),
-        calendarEvents: events.map((e: any) => ({ id: e.event_id, start: e.start_time, end: e.end_time, title: e.title })),
-        capacity: { billableDaysPerYear: 240, billableHoursPerDay: 6 }
-    };
-
-    if (Productivity.shouldEvaluateSchedule("calendar_updated", schedule)) {
-        logs.push(`Productivity evaluating schedule`);
-        const result = await Productivity.evaluateSchedule(schedule);
-        if (result.actions.length > 0) {
-            result.actions.forEach(a => actions.push({ agent: "Productivity", ...a }));
-        }
-    }
-
-    // 5. Tax Agent (Categorization)
-    // Use the same txn logic
-    if (mockTxnDoc) {
-        const taxTxn: Tax.Txn = {
-            transaction_id: mockTxnDoc.txnId,
+    // 4. Productivity Agent
+    try {
+        logs.push("Productivity: Evaluating schedule...");
+        const tasks = await Task.find({ userId: userId });
+        const events = await Event.find({ userId: userId });
+        const schedule: Productivity.UserSchedule = {
             user_id: userId,
-            amount: Number(mockTxnDoc.amount),
-            narration: mockTxnDoc.narration,
-            date: mockTxnDoc.date
+            tasks: tasks.map((t: any) => ({ id: t.id, dueDate: t.dueDate, est_hours: t.estHours || 2, done: t.done })),
+            calendarEvents: events.map((e: any) => ({ id: e.event_id, start: e.start_time, end: e.end_time, title: e.title })),
+            capacity: { billableDaysPerYear: 240, billableHoursPerDay: 6 }
         };
 
-        if (Tax.shouldTaxAgentAct(taxTxn)) {
-            logs.push(`Tax acting on transaction: ${taxTxn.transaction_id}`);
-            const result = await Tax.categorizeTransaction(taxTxn);
-            if (result) {
-                actions.push({
-                    agent: "Tax",
-                    type: "categorize_expense",
-                    payload: result
-                });
+        let prodAction = false;
+        if (Productivity.shouldEvaluateSchedule("calendar_updated", schedule)) {
+            const result = await Productivity.evaluateSchedule(schedule);
+            if (result.actions.length > 0) {
+                for (const action of result.actions) {
+                    let message = "Productivity Suggestion";
+                    if (action.type === "block_new_jobs") message = action.reason;
+                    else if (action.type === "create_deep_work_block") message = `Schedule Deep Work: ${action.title}`;
+                    else if (action.type === "suggest_reprioritize") message = action.message || "Reprioritize tasks";
+
+                    await createNotification(userId, "Productivity", "schedule_alert", message, {
+                        ...action,
+                        uniqueKey: `prod_${new Date().getTime()}_${Math.random()}`
+                    });
+                }
+                logs.push(`Productivity: Generated ${result.actions.length} schedule suggestions.`);
+                prodAction = true;
+                actionCount++;
             }
         }
+        if (!prodAction) {
+            await createStatusReport("Productivity", "Schedule optimized. No conflicts or overload detected.");
+        }
+    } catch (e: any) {
+        console.error("Productivity Error", e);
+        logs.push(`Productivity Error: ${e.message}`);
     }
 
-    return { actions, logs };
+    // 5. Tax Agent
+    try {
+        logs.push("Tax: Reviewing expenses...");
+        const recentTxn = await Transaction.findOne({ user_id: userId }).sort({ date: -1 });
+        let taxAction = false;
+        if (recentTxn) {
+             const taxTxn: Tax.Txn = {
+                transaction_id: recentTxn.transaction_id || recentTxn.txnId,
+                user_id: userId,
+                amount: Number(recentTxn.amount),
+                narration: recentTxn.narration,
+                date: recentTxn.date
+            };
+
+            if (Tax.shouldTaxAgentAct(taxTxn)) {
+                const result = await Tax.categorizeTransaction(taxTxn);
+                if (result) {
+                    await createNotification(userId, "Tax", "tax_review", `Categorize ${recentTxn.narration}`, {
+                        ...result,
+                        uniqueKey: `tax_${recentTxn._id}`
+                    });
+                    logs.push(`Tax: Categorization suggestion for ${recentTxn.narration}`);
+                    taxAction = true;
+                    actionCount++;
+                }
+            }
+        }
+        if (!taxAction) {
+            await createStatusReport("Tax", "Expense categorization up to date.");
+        }
+    } catch (e: any) {
+        console.error("Tax Error", e);
+        logs.push(`Tax Error: ${e.message}`);
+    }
+
+    return { success: true, logs };
+}
+
+export async function getPendingActions(userId: string) {
+    await dbConnect();
+    // Fetch unread notifications for agents
+    const notifs = await Notification.find({
+        recipientId: userId,
+        read: false,
+        // We can filter by specific types if needed, but for now take all unread agent-related ones
+        // Assuming 'agent' field is populated or we infer from type
+    }).sort({ createdAt: -1 });
+
+    // Map to UI Action Interface
+    return notifs.map(n => ({
+        id: n._id.toString(),
+        agent: n.agent || mapTypeToAgent(n.type),
+        type: n.type,
+        message: n.message,
+        timestamp: new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        payload: n.metadata,
+        status: n.metadata?.priority === 'high' ? 'warning' : 'success' // Simple mapping
+    }));
+}
+
+function mapTypeToAgent(type: string): string {
+    if (type === 'job_match') return 'Hunter';
+    if (type === 'invoice_nudge') return 'Collections';
+    if (type === 'smart_split') return 'CFO';
+    if (type === 'schedule_alert') return 'Productivity';
+    if (type === 'tax_review') return 'Tax';
+    return 'System';
 }

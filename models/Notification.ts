@@ -10,7 +10,7 @@ const NotificationSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ["job_match", "system", "message", "job_post", "job_bid", "proposal_received"], // Added proposal_received
+        enum: ["job_match", "system", "message", "job_post", "job_bid", "proposal_received", "schedule_alert", "smart_split", "invoice_nudge", "tax_review", "status_report"], // Added agent action types
         default: "system",
     },
     message: {

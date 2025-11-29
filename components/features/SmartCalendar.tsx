@@ -1,23 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getCalendarEvents, CalendarEvent } from "@/lib/data-service";
+import { CalendarEvent } from "@/lib/data-service";
 import { Card } from "@/components/ui/Card";
 import { motion } from "framer-motion";
 import { Calendar as CalendarIcon, Clock } from "lucide-react";
 
-export function SmartCalendar() {
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-
-  useEffect(() => {
-    const loadEvents = async () => {
-      const data = await getCalendarEvents();
-      // Sort by start time and take next 5
-      const sortedEvents = data.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()).slice(0, 5);
-      setEvents(sortedEvents);
-    };
-    loadEvents();
-  }, []);
+export function SmartCalendar({ events = [] }: { events?: CalendarEvent[] }) {
 
   const formatTime = (dateString: string) => {
     return new Date(dateString).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });

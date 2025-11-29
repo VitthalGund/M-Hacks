@@ -15,13 +15,13 @@ type Transaction = {
   status: "pending" | "cleared";
 };
 
-export function TransactionStream() {
+export function TransactionStream({ lastUpdated }: { lastUpdated?: number }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchTransactions();
-  }, []);
+  }, [lastUpdated]);
 
   const fetchTransactions = async () => {
     try {
